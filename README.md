@@ -18,6 +18,7 @@ just a new, separate OAuth2 client of it.
 - **`deepsink.transcribe`** → `deepsink_transcribe` (local Whisper, DeepSink app)
 - **`deepsink.notes`** → `deepsink_notes` (local Codex, DeepSink app)
 - **`deepsink.articulate`** → `deepsink_articulate` (local Codex, DeepSink app — Live Assist)
+- **`deepsink.diarize`** → `deepsink_diarize` (local pyannote.audio, DeepSink app — Speakers)
 
 ## Contract
 
@@ -64,6 +65,20 @@ excerpt (DeepSink's on-device recognition, not the full session
 transcript) and needs no `options`. Runs Codex locally, tuned to be fast
 rather than thorough; `output` is `{ "bullets": [...], "speech": "..." }`
 — the shape DeepSink's `ArticulateResponse` decodes.
+
+`deepsink.diarize` takes `"input"` as an array of
+`{ "audio_base64", "start_offset_seconds" }` — one entry per recorded
+chunk for a whole session, not one call per chunk (speaker labels are
+only consistent within a single diarization pass) — and
+`"options": { "format": "m4a" }`. Runs `pyannote.audio` locally, in its
+own isolated venv on the Mac mini (see `ai-gateway`'s own README for
+why); `output` is
+`{ "segments": [{ "start", "end", "speaker": "SPEAKER_00" }, ...] }`, in
+session-absolute seconds. This is the slowest call in this file by far —
+diarizing a long meeting on CPU can take many minutes — so it gets a
+30-minute Worker-side timeout, matching `deepsink_diarize`'s own default
+subprocess timeout. Triggered on demand (DeepSink's "Detect Speakers"
+button on a finished session), never automatically.
 
 ## One-time setup
 

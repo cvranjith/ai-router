@@ -27,6 +27,9 @@
 //                           full transcript text, options.marker_hints
 //   "deepsink.articulate" -> deepsink_articulate (local Codex); input =
 //                           a short recent transcript excerpt, no options
+//   "deepsink.diarize"   -> deepsink_diarize (local pyannote.audio); input =
+//                           [{audio_base64, start_offset_seconds}, ...]
+//                           (one per session chunk), options.format
 //
 // Adding a new service should mean adding one entry to SERVICES below
 // plus (if it's a genuinely new backend) one small adapter function —
@@ -39,6 +42,7 @@ const SERVICES = {
   "deepsink.transcribe": { backend: "ai-gateway", call: deepsinkTranscribeViaAiGateway },
   "deepsink.notes": { backend: "ai-gateway", call: deepsinkNotesViaAiGateway },
   "deepsink.articulate": { backend: "ai-gateway", call: deepsinkArticulateViaAiGateway },
+  "deepsink.diarize": { backend: "ai-gateway", call: deepsinkDiarizeViaAiGateway },
 };
 
 export default {
@@ -174,6 +178,26 @@ async function deepsinkArticulateViaAiGateway(env, input, options) {
   return await invokeAiGateway(env, "deepsink_articulate", {
     transcript: input,
   }, 90000);
+}
+
+// A whole session's audio, diarized in one pass (not per chunk - see
+// deepsink_diarize.py's own module docstring for why session-relative
+// speaker labels need that). This is genuinely the slowest call in this
+// file: diarizing a long meeting on CPU can take many minutes, not
+// seconds, and the gateway's own subprocess timeout for it defaults to
+// 1800s (deepsink_diarize.timeout_seconds) - so this gets a matching
+// Worker-side ceiling rather than the shorter "generous" timeouts the
+// other deepsink.* calls use. Triggered on demand by a "Detect Speakers"
+// button, not automatically, so a slow reply here doesn't block anything
+// else in the app.
+async function deepsinkDiarizeViaAiGateway(env, input, options) {
+  if (!Array.isArray(input) || input.length === 0) {
+    throw new Error("missing 'input' (array of {audio_base64, start_offset_seconds})");
+  }
+  return await invokeAiGateway(env, "deepsink_diarize", {
+    chunks: input,
+    format: options.format || "m4a",
+  }, 1800000);
 }
 
 async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
