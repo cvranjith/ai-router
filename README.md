@@ -60,6 +60,12 @@ Any random string works; e.g.:
 openssl rand -base64 32
 ```
 
+`GATEWAY_TOKEN_1`, `GATEWAY_TOKEN_2`, and `GATEWAY_TOKEN_3` are also
+accepted as equally-valid bearer tokens, entirely optional — set one
+via the same `wrangler secret put` command below for one-off/testing
+use, so a real client's own configured token never has to be rotated
+just to hand out a temporary one.
+
 ### 3. Set secrets
 
 Each of these prompts for a value (or pipe one in):

@@ -39,7 +39,7 @@ export default {
     }
 
     const auth = request.headers.get("Authorization") || "";
-    if (!env.GATEWAY_TOKEN || auth !== `Bearer ${env.GATEWAY_TOKEN}`) {
+    if (!isAuthorized(env, auth)) {
       return json({ error: "unauthorized" }, 401);
     }
 
@@ -157,6 +157,18 @@ async function getAiGatewayToken(env) {
     throw new Error(`ai-gateway auth failed: ${tokenData.error_description || tokenData.error || tokenResp.status}`);
   }
   return tokenData.access_token;
+}
+
+// Accepts GATEWAY_TOKEN plus any of GATEWAY_TOKEN_1/_2/_3 as equally
+// valid bearer tokens — lets one stable token stay configured in every
+// real client while a separate one (set via the same `wrangler secret
+// put` mechanism) is used for one-off testing, without ever having to
+// rotate or hand out the stable one for that. Unset slots are just
+// undefined and filtered out below, so there's no need to fill in all
+// four.
+function isAuthorized(env, authHeader) {
+  const candidates = [env.GATEWAY_TOKEN, env.GATEWAY_TOKEN_1, env.GATEWAY_TOKEN_2, env.GATEWAY_TOKEN_3].filter(Boolean);
+  return candidates.some((token) => authHeader === `Bearer ${token}`);
 }
 
 function json(obj, status = 200) {
