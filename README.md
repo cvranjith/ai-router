@@ -85,19 +85,34 @@ button on a finished session), never automatically.
 
 ## DeepSink session store passthrough
 
-Any path under `/deepsink/sessions/*` (any HTTP method) is proxied
-straight through to ai-gateway's own REST API — method, path, body, and
-status code pass as-is, no `{ service, backend, output, ms }` envelope.
-This is a real, stateful CRUD API (ai-gateway's `session_store.py` /
-`deepsink_sessions.py` — the Mac mini is DeepSink's source of truth for
-session data now, not the phone's local store), genuinely different in
-kind from the stateless `service` calls above, so it isn't shoehorned
-into that contract. See `ai-gateway`'s own README for the full route
-list. Per-route timeouts are matched to the actual work each route does
-server-side (30s for plain reads/writes, 5 min for a chunk upload
-that's really a Whisper call, 3 min for notes generation, 30 min for
-diarization) — same reasoning as the `deepsink.*` service timeouts
-above, just applied to a proxy instead of an adapter.
+Any path under `/deepsink/*` (any HTTP method — session CRUD under
+`/deepsink/sessions/*`, plus the login call at `/deepsink/auth/token`)
+is proxied straight through to ai-gateway's own REST API — method,
+path, body, status code, **and the caller's own `Authorization` header**
+all pass through completely unchanged, no `{ service, backend, output,
+ms }` envelope. This is a real, stateful CRUD API (ai-gateway's
+`session_store.py` / `deepsink_sessions.py` — the Mac mini is DeepSink's
+source of truth for session data now, not the phone's local store),
+genuinely different in kind from the stateless `service` calls above,
+so it isn't shoehorned into that contract.
+
+**This prefix has no `GATEWAY_TOKEN` check at this Worker at all** —
+unlike `/v1/invoke`, which is gated by this Worker's shared token and
+then exchanges it for a fresh ai-gateway OAuth *client* token, requests
+under `/deepsink/*` carry their own auth the whole way: a DeepSink
+`user_id`/`password`, exchanged at `/deepsink/auth/token` for a
+short-lived JWT (`user_auth.py` on the ai-gateway side — see that
+project's own README), sent as `Authorization: Bearer <token>` on every
+subsequent call. This Worker's only job for this prefix is exposing
+ai-gateway's REST API at a public HTTPS URL; auth is entirely
+ai-gateway's own responsibility here.
+
+See `ai-gateway`'s own README for the full route list. Per-route
+timeouts are matched to the actual work each route does server-side
+(30s for plain reads/writes, 5 min for a chunk upload that's really a
+Whisper call, 3 min for notes generation, 30 min for diarization) —
+same reasoning as the `deepsink.*` service timeouts above, just applied
+to a proxy instead of an adapter.
 
 ## One-time setup
 

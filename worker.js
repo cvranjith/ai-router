@@ -37,14 +37,19 @@
 // plus (if it's a genuinely new backend) one small adapter function —
 // never touching the routing/auth logic here.
 //
-// Separately: ANY path under /deepsink/sessions/* is proxied straight
-// through to ai-gateway's own REST API (session_store.py /
-// deepsink_sessions.py) — method, path, body, and status code all pass
-// as-is, no {service, backend, output, ms} envelope. That's a real,
-// stateful CRUD API now (the Mac mini is DeepSink's source of truth for
-// session data), genuinely different in kind from the stateless
-// service_id calls above, so it isn't shoehorned into the same
-// contract — see ai-gateway's own README for the full route list.
+// Separately: ANY path under /deepsink/* (session CRUD, and the
+// /deepsink/auth/token login call) is proxied straight through to
+// ai-gateway's own REST API (session_store.py / deepsink_sessions.py /
+// user_auth.py) — method, path, body, status code, AND the caller's own
+// Authorization header all pass through completely unchanged, no
+// {service, backend, output, ms} envelope and no GATEWAY_TOKEN check
+// here at all. That's deliberate: this prefix has its own, separate
+// auth boundary now (a human user_id/password -> short-lived JWT, see
+// user_auth.py — DeepSink's own login, not this Worker's shared token
+// or ai-gateway's OAuth *client* credentials), so this Worker's job for
+// this prefix is purely "expose ai-gateway's REST API at a public HTTPS
+// URL," nothing more. See ai-gateway's own README for the full route
+// list.
 
 const SERVICES = {
   "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
@@ -56,18 +61,13 @@ const SERVICES = {
   "deepsink.diarize": { backend: "ai-gateway", call: deepsinkDiarizeViaAiGateway },
 };
 
-const DEEPSINK_SESSIONS_PREFIX = "/deepsink/sessions";
+const DEEPSINK_PREFIX = "/deepsink";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    const auth = request.headers.get("Authorization") || "";
-    if (!isAuthorized(env, auth)) {
-      return json({ error: "unauthorized" }, 401);
-    }
-
-    if (url.pathname === DEEPSINK_SESSIONS_PREFIX || url.pathname.startsWith(`${DEEPSINK_SESSIONS_PREFIX}/`)) {
+    if (url.pathname === DEEPSINK_PREFIX || url.pathname.startsWith(`${DEEPSINK_PREFIX}/`)) {
       try {
         return await proxyToAiGateway(request, env, url.pathname, url.search);
       } catch (err) {
@@ -76,6 +76,11 @@ export default {
           502
         );
       }
+    }
+
+    const auth = request.headers.get("Authorization") || "";
+    if (!isAuthorized(env, auth)) {
+      return json({ error: "unauthorized" }, 401);
     }
 
     if (request.method !== "POST" || url.pathname !== "/v1/invoke") {
@@ -239,13 +244,19 @@ function deepsinkTimeoutMs(pathname, method) {
 }
 
 async function proxyToAiGateway(request, env, pathname, search) {
-  const accessToken = await getAiGatewayToken(env);
+  // No token exchange here on purpose, unlike invokeAiGateway below -
+  // this prefix's auth is the caller's own user_id/password -> JWT
+  // (user_auth.py), not this Worker's GATEWAY_TOKEN or ai-gateway's
+  // OAuth *client* credentials, so the caller's own Authorization
+  // header (present on every call except the /auth/token login call
+  // itself) passes straight through unchanged.
+  const headers = { "Content-Type": "application/json" };
+  const incomingAuth = request.headers.get("Authorization");
+  if (incomingAuth) headers["Authorization"] = incomingAuth;
+
   const init = {
     method: request.method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers,
     signal: AbortSignal.timeout(deepsinkTimeoutMs(pathname, request.method)),
   };
   if (request.method !== "GET" && request.method !== "DELETE") {
