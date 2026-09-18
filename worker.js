@@ -180,6 +180,13 @@ async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
 }
 
 async function getAiGatewayToken(env) {
+  // 20s, not 10s: measured by hand, the Worker -> Tailscale Funnel ->
+  // Mac mini round trip alone (this call is the very first hop of
+  // every single /invoke, regardless of service) varies anywhere from
+  // ~2s to ~19s on its own - Funnel always relays rather than going
+  // peer-to-peer, since the Worker is outside the tailnet. 10s made this
+  // the single most common source of a spurious "backend_error" /
+  // "operation was aborted due to timeout" on an otherwise-healthy Mac.
   const tokenResp = await fetch(`${env.AI_GATEWAY_URL}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -187,7 +194,7 @@ async function getAiGatewayToken(env) {
       client_id: env.AI_GATEWAY_CLIENT_ID,
       client_secret: env.AI_GATEWAY_CLIENT_SECRET,
     }),
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(20000),
   });
   const tokenData = await tokenResp.json();
   if (!tokenResp.ok) {
