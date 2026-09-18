@@ -86,12 +86,27 @@ async function summarizeViaAiGateway(env, videoId, options) {
 async function downloadViaAiGateway(env, videoId, options) {
   if (!videoId) throw new Error("missing 'input' (video ID)");
   const kind = options.kind || "video";
-  // Passed straight through as ai-gateway's own result shape:
-  // { video_id, kind, title, ext, url, filesize }.
-  return await invokeAiGateway(env, "youtube_download", { video_id: videoId, kind });
+  // "audio" has ai-gateway extract the audio track server-side via
+  // ffmpeg (a stream copy against an unthrottled progressive stream -
+  // see that project's own services/youtube_download.py for why),
+  // which takes longer than resolving a plain redirect URL, hence the
+  // longer timeout than "video" gets. Its `url` also comes back as a
+  // path relative to ai-gateway itself (something like
+  // "/files/<token>.m4a") rather than an absolute CDN URL, since it
+  // points at a file this Worker's own AI_GATEWAY_URL is now serving -
+  // resolved to an absolute URL here so the caller never has to know
+  // the difference between the two kinds' result shapes.
+  const timeoutMs = kind === "audio" ? 300000 : 30000;
+  const result = await invokeAiGateway(env, "youtube_download", { video_id: videoId, kind }, timeoutMs);
+  return { ...result, url: resolveAiGatewayURL(env, result.url) };
 }
 
-async function invokeAiGateway(env, serviceId, params) {
+function resolveAiGatewayURL(env, url) {
+  if (!url || /^https?:\/\//.test(url)) return url;
+  return `${env.AI_GATEWAY_URL}${url}`;
+}
+
+async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
   const accessToken = await getAiGatewayToken(env);
 
   const invokeResp = await fetch(`${env.AI_GATEWAY_URL}/invoke`, {
@@ -101,7 +116,7 @@ async function invokeAiGateway(env, serviceId, params) {
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ service_id: serviceId, params }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const invokeData = await invokeResp.json();
   if (!invokeResp.ok) {
