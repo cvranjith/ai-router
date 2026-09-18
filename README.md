@@ -35,10 +35,14 @@ Authorization: Bearer <GATEWAY_TOKEN>
 its `output` is an object, not a string:
 `{ "video_id", "kind", "title", "ext", "url", "filesize" }`.
 
-`local.deploy` takes `"options": { "action": "wifi_status" | "start_deploy" | "deploy_status" }`
-and needs no `input`. `start_deploy` returns immediately
-(`{ "status": "running" }`) rather than waiting for the actual
-multi-minute build+install — poll `deploy_status` afterward
+`local.deploy` takes `"options": { "action": "wifi_status" | "start_deploy" | "deploy_status", "project": "ytrun" | "deepsink" }`
+and needs no `input`. `project` is optional (defaults to `"ytrun"` on the
+ai-gateway side if omitted) and picks which app's install script runs —
+yt-run and DeepSink each have their own status/lock, so polling one
+project's `deploy_status` is never confused by the other's build.
+`start_deploy` returns immediately (`{ "status": "running" }`) rather
+than waiting for the actual multi-minute build+install — poll
+`deploy_status` afterward
 (`{ "status": "idle"|"running"|"success"|"failed", "log_tail": "..." }`)
 until it's no longer `"running"`.
 

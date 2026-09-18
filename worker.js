@@ -127,7 +127,12 @@ async function deployViaAiGateway(env, input, options) {
   if (!["wifi_status", "start_deploy", "deploy_status"].includes(action)) {
     throw new Error("invalid 'options.action' - must be 'wifi_status', 'start_deploy', or 'deploy_status'");
   }
-  return await invokeAiGateway(env, "mac_deploy", { action });
+  // `project` is optional and passed through as-is - mac_deploy defaults
+  // to "ytrun" when it's absent, so yt-run's own AIGatewayClient (which
+  // predates this param and never sends it) keeps working unchanged.
+  const params = { action };
+  if (options.project) params.project = options.project;
+  return await invokeAiGateway(env, "mac_deploy", params);
 }
 
 // A chunk is up to ~3.5 minutes of 16kHz mono AAC (~1MB once base64'd)
