@@ -15,6 +15,8 @@ just a new, separate OAuth2 client of it.
 - **`local.codex`** → `youtube_summarizer`
 - **`local.download`** → `youtube_download`
 - **`local.deploy`** → `mac_deploy` (triggers `install_to_device.sh` on the Mac itself)
+- **`deepsink.transcribe`** → `deepsink_transcribe` (local Whisper, DeepSink app)
+- **`deepsink.notes`** → `deepsink_notes` (local Codex, DeepSink app)
 
 ## Contract
 
@@ -39,6 +41,18 @@ and needs no `input`. `start_deploy` returns immediately
 multi-minute build+install — poll `deploy_status` afterward
 (`{ "status": "idle"|"running"|"success"|"failed", "log_tail": "..." }`)
 until it's no longer `"running"`.
+
+`deepsink.transcribe` takes `"input"` as a base64-encoded audio chunk and
+`"options": { "chunk_index": 0, "start_offset_seconds": 0.0, "format": "m4a" }`.
+Runs Whisper locally on the Mac mini (no audio leaves it); `output` is
+`{ "blocks": [{ "start", "end", "text" }, ...] }`, already offset by
+`start_offset_seconds`.
+
+`deepsink.notes` takes `"input"` as the full transcript text and
+`"options": { "marker_hints": [{ "offset_seconds", "comment" }, ...] }`.
+Runs Codex locally on the Mac mini; `output` is
+`{ "title", "summary", "key_points", "decisions", "action_items", "open_questions" }`
+— the exact shape DeepSink's `SessionNotesPayload` decodes.
 
 ## One-time setup
 

@@ -14,12 +14,17 @@
 // Wired so far — both against the ai-gateway service already running
 // on the Mac mini (see that project's own README), just different
 // ai-gateway service_ids underneath:
-//   "local.codex"    -> youtube_summarizer; input = video ID,
-//                       options.length = "short"|"paragraph"|"detailed"
-//   "local.download" -> youtube_download; input = video ID,
-//                       options.kind = "video"|"audio"
-//   "local.deploy"   -> mac_deploy; no input, options.action =
-//                       "wifi_status"|"start_deploy"|"deploy_status"
+//   "local.codex"        -> youtube_summarizer; input = video ID,
+//                           options.length = "short"|"paragraph"|"detailed"
+//   "local.download"     -> youtube_download; input = video ID,
+//                           options.kind = "video"|"audio"
+//   "local.deploy"       -> mac_deploy; no input, options.action =
+//                           "wifi_status"|"start_deploy"|"deploy_status"
+//   "deepsink.transcribe" -> deepsink_transcribe (local Whisper); input =
+//                           base64 audio chunk, options.chunk_index /
+//                           options.start_offset_seconds / options.format
+//   "deepsink.notes"     -> deepsink_notes (local Codex); input =
+//                           full transcript text, options.marker_hints
 //
 // Adding a new service should mean adding one entry to SERVICES below
 // plus (if it's a genuinely new backend) one small adapter function —
@@ -29,6 +34,8 @@ const SERVICES = {
   "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
   "local.download": { backend: "ai-gateway", call: downloadViaAiGateway },
   "local.deploy": { backend: "ai-gateway", call: deployViaAiGateway },
+  "deepsink.transcribe": { backend: "ai-gateway", call: deepsinkTranscribeViaAiGateway },
+  "deepsink.notes": { backend: "ai-gateway", call: deepsinkNotesViaAiGateway },
 };
 
 export default {
@@ -121,6 +128,31 @@ async function deployViaAiGateway(env, input, options) {
     throw new Error("invalid 'options.action' - must be 'wifi_status', 'start_deploy', or 'deploy_status'");
   }
   return await invokeAiGateway(env, "mac_deploy", { action });
+}
+
+// A chunk is up to ~3.5 minutes of 16kHz mono AAC (~1MB once base64'd)
+// and Whisper runs CPU-only on the Mac mini, so this gets the same
+// extended timeout as local.download's "audio" kind rather than the
+// short default - a real transcription can take longer than 30s.
+async function deepsinkTranscribeViaAiGateway(env, input, options) {
+  if (!input) throw new Error("missing 'input' (base64 audio chunk)");
+  return await invokeAiGateway(env, "deepsink_transcribe", {
+    audio_base64: input,
+    chunk_index: options.chunk_index,
+    start_offset_seconds: options.start_offset_seconds,
+    format: options.format || "m4a",
+  }, 300000);
+}
+
+// Codex over a full meeting transcript can take a while too, though
+// less reliably long than an audio chunk - same extended-timeout
+// reasoning as above, just a smaller number.
+async function deepsinkNotesViaAiGateway(env, input, options) {
+  if (!input) throw new Error("missing 'input' (transcript text)");
+  return await invokeAiGateway(env, "deepsink_notes", {
+    transcript: input,
+    marker_hints: options.marker_hints || [],
+  }, 180000);
 }
 
 async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
