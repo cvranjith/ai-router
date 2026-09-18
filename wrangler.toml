@@ -1,0 +1,18 @@
+name = "ai-router"
+main = "worker.js"
+compatibility_date = "2024-12-01"
+
+# No npm dependencies — plain fetch()/Response, no build step needed.
+#
+# Vars (below) are plaintext, visible in the dashboard and via the API —
+# fine for a non-secret base URL, never for credentials.
+[vars]
+AI_GATEWAY_URL = "https://ranjiths-mac-mini.tail096eca.ts.net/gateway"
+
+# Secrets (run once each — see README.md for how to generate each value):
+#   wrangler secret put GATEWAY_TOKEN            # what YOUR apps present to THIS Worker
+#   wrangler secret put AI_GATEWAY_CLIENT_ID     # this Worker's own ai-gateway OAuth client
+#   wrangler secret put AI_GATEWAY_CLIENT_SECRET
+#
+# Deploy with: wrangler deploy
+# Local dev with: wrangler dev (reads secrets from .dev.vars — see .dev.vars.example)

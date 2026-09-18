@@ -1,0 +1,5 @@
+# Copy to .dev.vars (gitignored) for local `wrangler dev` testing.
+# Real deploys use `wrangler secret put` instead — see README.md.
+GATEWAY_TOKEN=dev-only-example-token
+AI_GATEWAY_CLIENT_ID=example_client_id
+AI_GATEWAY_CLIENT_SECRET=example_client_secret
