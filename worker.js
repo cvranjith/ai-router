@@ -18,6 +18,8 @@
 //                       options.length = "short"|"paragraph"|"detailed"
 //   "local.download" -> youtube_download; input = video ID,
 //                       options.kind = "video"|"audio"
+//   "local.deploy"   -> mac_deploy; no input, options.action =
+//                       "wifi_status"|"start_deploy"|"deploy_status"
 //
 // Adding a new service should mean adding one entry to SERVICES below
 // plus (if it's a genuinely new backend) one small adapter function —
@@ -26,6 +28,7 @@
 const SERVICES = {
   "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
   "local.download": { backend: "ai-gateway", call: downloadViaAiGateway },
+  "local.deploy": { backend: "ai-gateway", call: deployViaAiGateway },
 };
 
 export default {
@@ -104,6 +107,20 @@ async function downloadViaAiGateway(env, videoId, options) {
 function resolveAiGatewayURL(env, url) {
   if (!url || /^https?:\/\//.test(url)) return url;
   return `${env.AI_GATEWAY_URL}${url}`;
+}
+
+// Every action here is deliberately fast (see mac_deploy.py — even
+// "start_deploy" just spawns a background thread and returns), so this
+// uses the same short default timeout as summarize rather than
+// anything like "local.download"'s audio timeout. The real,
+// multi-minute build+install work is polled for via "deploy_status"
+// instead of ever being awaited in a single call.
+async function deployViaAiGateway(env, input, options) {
+  const action = options.action;
+  if (!["wifi_status", "start_deploy", "deploy_status"].includes(action)) {
+    throw new Error("invalid 'options.action' - must be 'wifi_status', 'start_deploy', or 'deploy_status'");
+  }
+  return await invokeAiGateway(env, "mac_deploy", { action });
 }
 
 async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
