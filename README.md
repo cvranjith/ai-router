@@ -17,6 +17,7 @@ just a new, separate OAuth2 client of it.
 - **`local.deploy`** → `mac_deploy` (triggers `install_to_device.sh` on the Mac itself)
 - **`deepsink.transcribe`** → `deepsink_transcribe` (local Whisper, DeepSink app)
 - **`deepsink.notes`** → `deepsink_notes` (local Codex, DeepSink app)
+- **`deepsink.articulate`** → `deepsink_articulate` (local Codex, DeepSink app — Live Assist)
 
 ## Contract
 
@@ -57,6 +58,12 @@ Runs Whisper locally on the Mac mini (no audio leaves it); `output` is
 Runs Codex locally on the Mac mini; `output` is
 `{ "title", "summary", "key_points", "decisions", "action_items", "open_questions" }`
 — the exact shape DeepSink's `SessionNotesPayload` decodes.
+
+`deepsink.articulate` takes `"input"` as a short, recent transcript
+excerpt (DeepSink's on-device recognition, not the full session
+transcript) and needs no `options`. Runs Codex locally, tuned to be fast
+rather than thorough; `output` is `{ "bullets": [...], "speech": "..." }`
+— the shape DeepSink's `ArticulateResponse` decodes.
 
 ## One-time setup
 

@@ -25,6 +25,8 @@
 //                           options.start_offset_seconds / options.format
 //   "deepsink.notes"     -> deepsink_notes (local Codex); input =
 //                           full transcript text, options.marker_hints
+//   "deepsink.articulate" -> deepsink_articulate (local Codex); input =
+//                           a short recent transcript excerpt, no options
 //
 // Adding a new service should mean adding one entry to SERVICES below
 // plus (if it's a genuinely new backend) one small adapter function —
@@ -36,6 +38,7 @@ const SERVICES = {
   "local.deploy": { backend: "ai-gateway", call: deployViaAiGateway },
   "deepsink.transcribe": { backend: "ai-gateway", call: deepsinkTranscribeViaAiGateway },
   "deepsink.notes": { backend: "ai-gateway", call: deepsinkNotesViaAiGateway },
+  "deepsink.articulate": { backend: "ai-gateway", call: deepsinkArticulateViaAiGateway },
 };
 
 export default {
@@ -158,6 +161,19 @@ async function deepsinkNotesViaAiGateway(env, input, options) {
     transcript: input,
     marker_hints: options.marker_hints || [],
   }, 180000);
+}
+
+// Tapped mid-meeting and waited on, so the input is small and
+// deepsink_articulate's own Codex timeout is short (45s default) - but
+// this still gets a generous Worker-side ceiling for the same reason
+// the deploy calls do (see that section's own comment): the Worker ->
+// Tailscale Funnel -> Mac mini round trip alone varies ~2-19s, on top
+// of whatever Codex itself takes.
+async function deepsinkArticulateViaAiGateway(env, input, options) {
+  if (!input) throw new Error("missing 'input' (recent transcript excerpt)");
+  return await invokeAiGateway(env, "deepsink_articulate", {
+    transcript: input,
+  }, 90000);
 }
 
 async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {
