@@ -24,9 +24,11 @@
 //                           base64 audio chunk, options.chunk_index /
 //                           options.start_offset_seconds / options.format
 //   "deepsink.notes"     -> deepsink_notes (local Codex); input =
-//                           full transcript text, options.marker_hints
+//                           full transcript text, options.marker_hints /
+//                           options.background_notes
 //   "deepsink.articulate" -> deepsink_articulate (local Codex); input =
-//                           a short recent transcript excerpt, no options
+//                           a short recent transcript excerpt,
+//                           options.background_notes
 //   "deepsink.diarize"   -> deepsink_diarize (local pyannote.audio); input =
 //                           [{audio_base64, start_offset_seconds}, ...]
 //                           (one per session chunk), options.format
@@ -164,6 +166,7 @@ async function deepsinkNotesViaAiGateway(env, input, options) {
   return await invokeAiGateway(env, "deepsink_notes", {
     transcript: input,
     marker_hints: options.marker_hints || [],
+    background_notes: options.background_notes || "",
   }, 180000);
 }
 
@@ -177,6 +180,7 @@ async function deepsinkArticulateViaAiGateway(env, input, options) {
   if (!input) throw new Error("missing 'input' (recent transcript excerpt)");
   return await invokeAiGateway(env, "deepsink_articulate", {
     transcript: input,
+    background_notes: options.background_notes || "",
   }, 90000);
 }
 

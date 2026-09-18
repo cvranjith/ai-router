@@ -55,14 +55,17 @@ Runs Whisper locally on the Mac mini (no audio leaves it); `output` is
 `start_offset_seconds`.
 
 `deepsink.notes` takes `"input"` as the full transcript text and
-`"options": { "marker_hints": [{ "offset_seconds", "comment" }, ...] }`.
-Runs Codex locally on the Mac mini; `output` is
-`{ "title", "summary", "key_points", "decisions", "action_items", "open_questions" }`
+`"options": { "marker_hints": [{ "offset_seconds", "comment" }, ...], "background_notes": "..." }`.
+`background_notes` is free-text context the user typed about the session
+(attendees, agenda, acronyms) — used to interpret the transcript, never
+treated as meeting content. Runs Codex locally on the Mac mini; `output`
+is `{ "title", "summary", "key_points", "decisions", "action_items", "open_questions" }`
 — the exact shape DeepSink's `SessionNotesPayload` decodes.
 
 `deepsink.articulate` takes `"input"` as a short, recent transcript
 excerpt (DeepSink's on-device recognition, not the full session
-transcript) and needs no `options`. Runs Codex locally, tuned to be fast
+transcript) and `"options": { "background_notes": "..." }` (same field as
+`deepsink.notes`, both optional). Runs Codex locally, tuned to be fast
 rather than thorough; `output` is `{ "bullets": [...], "speech": "..." }`
 — the shape DeepSink's `ArticulateResponse` decodes.
 
