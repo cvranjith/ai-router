@@ -8,17 +8,24 @@
 // Authorization: Bearer <GATEWAY_TOKEN>
 // { "service": "local.codex", "input": "<video id>", "options": { "length": "short" } }
 //
-// 200 -> { "service": "...", "backend": "...", "output": "...", "ms": 1234 }
+// 200 -> { "service": "...", "backend": "...", "output": ..., "ms": 1234 }
 // 4xx/5xx -> { "error": "...", ...details }, never a provider's raw error body.
 //
-// Only "local.codex" is wired so far — routes to the youtube_summarizer
-// service already running on the Mac mini's ai-gateway (see that
-// project's own README). Adding a new service should mean adding one
-// entry to SERVICES below plus (if it's a genuinely new backend) one
-// small adapter function — never touching the routing/auth logic here.
+// Wired so far — both against the ai-gateway service already running
+// on the Mac mini (see that project's own README), just different
+// ai-gateway service_ids underneath:
+//   "local.codex"    -> youtube_summarizer; input = video ID,
+//                       options.length = "short"|"paragraph"|"detailed"
+//   "local.download" -> youtube_download; input = video ID,
+//                       options.kind = "video"|"audio"
+//
+// Adding a new service should mean adding one entry to SERVICES below
+// plus (if it's a genuinely new backend) one small adapter function —
+// never touching the routing/auth logic here.
 
 const SERVICES = {
-  "local.codex": { backend: "ai-gateway", call: callAiGateway },
+  "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
+  "local.download": { backend: "ai-gateway", call: downloadViaAiGateway },
 };
 
 export default {
@@ -59,18 +66,51 @@ export default {
   },
 };
 
-// --- ai-gateway adapter (Mac mini, via Tailscale Funnel) ---
+// --- ai-gateway adapters (Mac mini, via Tailscale Funnel) ---
 //
-// Fetches a fresh OAuth token on every call rather than caching it in
-// module scope — simplest correct option, and at personal/occasional
+// Both share invokeAiGateway()/getAiGatewayToken() below - a fresh
+// OAuth token is fetched on every call rather than caching it in
+// module scope: simplest correct option, and at personal/occasional
 // request volumes the extra round trip is negligible. (Module-scope
 // caching across requests on a warm isolate is a legitimate future
 // optimization if this Worker ever sees real traffic, but isn't worth
 // the added state for this.)
-async function callAiGateway(env, videoId, options) {
+
+async function summarizeViaAiGateway(env, videoId, options) {
   if (!videoId) throw new Error("missing 'input' (video ID)");
   const length = options.length || "paragraph";
+  const result = await invokeAiGateway(env, "youtube_summarizer", { video_id: videoId, length });
+  return result.summary;
+}
 
+async function downloadViaAiGateway(env, videoId, options) {
+  if (!videoId) throw new Error("missing 'input' (video ID)");
+  const kind = options.kind || "video";
+  // Passed straight through as ai-gateway's own result shape:
+  // { video_id, kind, title, ext, url, filesize }.
+  return await invokeAiGateway(env, "youtube_download", { video_id: videoId, kind });
+}
+
+async function invokeAiGateway(env, serviceId, params) {
+  const accessToken = await getAiGatewayToken(env);
+
+  const invokeResp = await fetch(`${env.AI_GATEWAY_URL}/invoke`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ service_id: serviceId, params }),
+    signal: AbortSignal.timeout(30000),
+  });
+  const invokeData = await invokeResp.json();
+  if (!invokeResp.ok) {
+    throw new Error(`ai-gateway: ${invokeData.error || invokeResp.status}`);
+  }
+  return invokeData.result;
+}
+
+async function getAiGatewayToken(env) {
   const tokenResp = await fetch(`${env.AI_GATEWAY_URL}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -84,24 +124,7 @@ async function callAiGateway(env, videoId, options) {
   if (!tokenResp.ok) {
     throw new Error(`ai-gateway auth failed: ${tokenData.error_description || tokenData.error || tokenResp.status}`);
   }
-
-  const invokeResp = await fetch(`${env.AI_GATEWAY_URL}/invoke`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${tokenData.access_token}`,
-    },
-    body: JSON.stringify({
-      service_id: "youtube_summarizer",
-      params: { video_id: videoId, length },
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-  const invokeData = await invokeResp.json();
-  if (!invokeResp.ok) {
-    throw new Error(`ai-gateway: ${invokeData.error || invokeResp.status}`);
-  }
-  return invokeData.result.summary;
+  return tokenData.access_token;
 }
 
 function json(obj, status = 200) {

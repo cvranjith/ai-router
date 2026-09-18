@@ -7,10 +7,13 @@ new provider or moving a backend later never means changing the apps
 that call it. See `requirement-cloudflare.md` (in the `yt-run` repo)
 for the full design and future plans (Groq, Gemini, `local.ollama`).
 
-Currently wired: **`local.codex`** — routes to the `youtube_summarizer`
-service already running on the Mac mini's `ai-gateway`, reached over
-its existing Tailscale Funnel URL. No changes to `ai-gateway` itself
-were needed — this Worker is just a new, separate OAuth2 client of it.
+Currently wired — both against the `ai-gateway` service already
+running on the Mac mini, reached over its existing Tailscale Funnel
+URL. No changes to `ai-gateway` itself were needed — this Worker is
+just a new, separate OAuth2 client of it.
+
+- **`local.codex`** → `youtube_summarizer`
+- **`local.download`** → `youtube_download`
 
 ## Contract
 
@@ -24,6 +27,10 @@ Authorization: Bearer <GATEWAY_TOKEN>
 400 -> { "error": "unknown_service", "known_services": [...] }
 502 -> { "error": "backend_error", "backend": "...", "message": "..." }
 ```
+
+`local.download` takes `"options": { "kind": "video" | "audio" }` and
+its `output` is an object, not a string:
+`{ "video_id", "kind", "title", "ext", "url", "filesize" }`.
 
 ## One-time setup
 
@@ -101,9 +108,9 @@ failing route without guessing.
 
 ## Adding a new service later
 
-1. Write a small adapter function (see `callAiGateway` in `worker.js`
-   for the shape: `async (env, input, options) => output`, throwing on
-   failure).
+1. Write a small adapter function (see `summarizeViaAiGateway` in
+   `worker.js` for the shape: `async (env, input, options) => output`,
+   throwing on failure).
 2. Add one entry to the `SERVICES` map at the top of `worker.js`.
 3. Add any new secrets it needs (`wrangler secret put ...`).
 
