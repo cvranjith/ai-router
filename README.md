@@ -14,6 +14,7 @@ just a new, separate OAuth2 client of it.
 
 - **`local.codex`** → `youtube_summarizer`
 - **`local.download`** → `youtube_download`
+- **`local.deploy`** → `mac_deploy` (triggers `install_to_device.sh` on the Mac itself)
 
 ## Contract
 
@@ -31,6 +32,13 @@ Authorization: Bearer <GATEWAY_TOKEN>
 `local.download` takes `"options": { "kind": "video" | "audio" }` and
 its `output` is an object, not a string:
 `{ "video_id", "kind", "title", "ext", "url", "filesize" }`.
+
+`local.deploy` takes `"options": { "action": "wifi_status" | "start_deploy" | "deploy_status" }`
+and needs no `input`. `start_deploy` returns immediately
+(`{ "status": "running" }`) rather than waiting for the actual
+multi-minute build+install — poll `deploy_status` afterward
+(`{ "status": "idle"|"running"|"success"|"failed", "log_tail": "..." }`)
+until it's no longer `"running"`.
 
 ## One-time setup
 
