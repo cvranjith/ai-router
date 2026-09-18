@@ -36,6 +36,15 @@
 // Adding a new service should mean adding one entry to SERVICES below
 // plus (if it's a genuinely new backend) one small adapter function —
 // never touching the routing/auth logic here.
+//
+// Separately: ANY path under /deepsink/sessions/* is proxied straight
+// through to ai-gateway's own REST API (session_store.py /
+// deepsink_sessions.py) — method, path, body, and status code all pass
+// as-is, no {service, backend, output, ms} envelope. That's a real,
+// stateful CRUD API now (the Mac mini is DeepSink's source of truth for
+// session data), genuinely different in kind from the stateless
+// service_id calls above, so it isn't shoehorned into the same
+// contract — see ai-gateway's own README for the full route list.
 
 const SERVICES = {
   "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
@@ -47,16 +56,30 @@ const SERVICES = {
   "deepsink.diarize": { backend: "ai-gateway", call: deepsinkDiarizeViaAiGateway },
 };
 
+const DEEPSINK_SESSIONS_PREFIX = "/deepsink/sessions";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method !== "POST" || url.pathname !== "/v1/invoke") {
-      return json({ error: "not_found" }, 404);
-    }
 
     const auth = request.headers.get("Authorization") || "";
     if (!isAuthorized(env, auth)) {
       return json({ error: "unauthorized" }, 401);
+    }
+
+    if (url.pathname === DEEPSINK_SESSIONS_PREFIX || url.pathname.startsWith(`${DEEPSINK_SESSIONS_PREFIX}/`)) {
+      try {
+        return await proxyToAiGateway(request, env, url.pathname, url.search);
+      } catch (err) {
+        return json(
+          { error: "backend_error", backend: "ai-gateway", message: String(err && err.message ? err.message : err) },
+          502
+        );
+      }
+    }
+
+    if (request.method !== "POST" || url.pathname !== "/v1/invoke") {
+      return json({ error: "not_found" }, 404);
     }
 
     let body;
@@ -202,6 +225,38 @@ async function deepsinkDiarizeViaAiGateway(env, input, options) {
     chunks: input,
     format: options.format || "m4a",
   }, 1800000);
+}
+
+// Per-route timeout, same reasoning as the deepsink.* adapters above
+// (Whisper/Codex/diarization genuinely take a while) — matched against
+// the actual work each route does server-side, not a single blanket
+// number for the whole passthrough.
+function deepsinkTimeoutMs(pathname, method) {
+  if (pathname.endsWith("/diarize")) return 1800000;
+  if (pathname.endsWith("/finish") || pathname.endsWith("/regenerate")) return 180000;
+  if (method === "POST" && pathname.endsWith("/chunks")) return 300000;
+  return 30000;
+}
+
+async function proxyToAiGateway(request, env, pathname, search) {
+  const accessToken = await getAiGatewayToken(env);
+  const init = {
+    method: request.method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: AbortSignal.timeout(deepsinkTimeoutMs(pathname, request.method)),
+  };
+  if (request.method !== "GET" && request.method !== "DELETE") {
+    init.body = await request.text();
+  }
+  const resp = await fetch(`${env.AI_GATEWAY_URL}${pathname}${search}`, init);
+  const text = await resp.text();
+  return new Response(text, {
+    status: resp.status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 async function invokeAiGateway(env, serviceId, params, timeoutMs = 30000) {

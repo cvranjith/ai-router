@@ -83,6 +83,22 @@ diarizing a long meeting on CPU can take many minutes — so it gets a
 subprocess timeout. Triggered on demand (DeepSink's "Detect Speakers"
 button on a finished session), never automatically.
 
+## DeepSink session store passthrough
+
+Any path under `/deepsink/sessions/*` (any HTTP method) is proxied
+straight through to ai-gateway's own REST API — method, path, body, and
+status code pass as-is, no `{ service, backend, output, ms }` envelope.
+This is a real, stateful CRUD API (ai-gateway's `session_store.py` /
+`deepsink_sessions.py` — the Mac mini is DeepSink's source of truth for
+session data now, not the phone's local store), genuinely different in
+kind from the stateless `service` calls above, so it isn't shoehorned
+into that contract. See `ai-gateway`'s own README for the full route
+list. Per-route timeouts are matched to the actual work each route does
+server-side (30s for plain reads/writes, 5 min for a chunk upload
+that's really a Whisper call, 3 min for notes generation, 30 min for
+diarization) — same reasoning as the `deepsink.*` service timeouts
+above, just applied to a proxy instead of an adapter.
+
 ## One-time setup
 
 ### 1. Register this Worker as an ai-gateway client
