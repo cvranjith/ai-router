@@ -16,6 +16,8 @@
 // ai-gateway service_ids underneath:
 //   "local.codex"        -> youtube_summarizer; input = video ID,
 //                           options.length = "short"|"paragraph"|"detailed"
+//   "local.classify"     -> youtube_classify; input = channel name,
+//                           options.title / options.known_categories
 //   "local.download"     -> youtube_download; input = video ID,
 //                           options.kind = "video"|"audio"
 //   "local.deploy"       -> mac_deploy; no input, options.action =
@@ -53,6 +55,7 @@
 
 const SERVICES = {
   "local.codex": { backend: "ai-gateway", call: summarizeViaAiGateway },
+  "local.classify": { backend: "ai-gateway", call: classifyViaAiGateway },
   "local.download": { backend: "ai-gateway", call: downloadViaAiGateway },
   "local.deploy": { backend: "ai-gateway", call: deployViaAiGateway },
   "deepsink.transcribe": { backend: "ai-gateway", call: deepsinkTranscribeViaAiGateway },
@@ -128,6 +131,16 @@ async function summarizeViaAiGateway(env, videoId, options) {
   const length = options.length || "paragraph";
   const result = await invokeAiGateway(env, "youtube_summarizer", { video_id: videoId, length });
   return result.summary;
+}
+
+async function classifyViaAiGateway(env, channel, options) {
+  if (!channel) throw new Error("missing 'input' (channel name)");
+  const result = await invokeAiGateway(env, "youtube_classify", {
+    channel,
+    title: options.title || "",
+    known_categories: options.known_categories || [],
+  });
+  return result.category;
 }
 
 async function downloadViaAiGateway(env, videoId, options) {
